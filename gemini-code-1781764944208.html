@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>성수고 수강과목 통합 점검 시스템</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root { --primary: #2563eb; --primary-light: #eff6ff; --danger: #dc2626; --success: #16a34a; --slate-700: #334155; --slate-200: #e2e8f0; --bg: #f8fafc; }
+        body { font-family: 'Pretendard', sans-serif; background-color: var(--bg); color: var(--slate-700); margin: 0; padding: 20px; line-height: 1.5; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 30px; }
+        header h1 { font-size: 2rem; color: #1e293b; margin-bottom: 5px; word-break: keep-all; }
+        .dept-title { font-size: 1.25rem; font-weight: 700; color: var(--primary); margin-bottom: 15px; letter-spacing: 2px; }
+        
+        .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--slate-200); }
+        .card-title { font-size: 1.25rem; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; color: #1e293b; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; }
+        
+        .search-area, .joint-input-area { display: flex; gap: 10px; background: #f1f5f9; padding: 15px; border-radius: 8px; flex-wrap: wrap; align-items: center; }
+        input[type="text"], input[type="number"], select { padding: 10px; border: 1px solid var(--slate-200); border-radius: 6px; outline: none; font-size: 0.95rem; }
+        input[type="text"] { flex: 1; min-width: 120px; }
+        button { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s; white-space: nowrap; }
+        button:hover { background: #1d4ed8; }
+        button:disabled { background: #94a3b8; cursor: not-allowed; }
+
+        .loading-status { text-align: center; color: var(--primary); font-weight: 600; margin-top: 10px; font-size: 0.9rem; }
+
+        .semester-block { margin-bottom: 20px; border: 1px solid var(--slate-200); border-radius: 8px; overflow: hidden; }
+        .semester-header { background: #f8fafc; padding: 10px 15px; font-weight: 700; border-bottom: 1px solid var(--slate-200); color: #0f172a; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #f1f5f9; text-align: left; padding: 10px; font-size: 0.85rem; color: #475569; }
+        td { padding: 10px; border-top: 1px solid var(--slate-200); font-size: 0.9rem; }
+
+        .tag { padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }
+        .tag-fixed { background: #e0f2fe; color: #0369a1; }
+        .tag-choice { background: #fef3c7; color: #92400e; }
+        .tag-joint { background: #f3e8ff; color: #7e22ce; }
+
+        .simulation-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; padding: 15px; }
+        .subject-card { border: 1px solid var(--slate-200); padding: 12px; border-radius: 8px; cursor: pointer; transition: all 0.2s; text-align: center; background: white; }
+        .subject-card:hover { border-color: var(--primary); background: var(--primary-light); }
+        .subject-card.active { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2); }
+
+        .check-table { margin-top: 20px; border: 2px solid var(--slate-200); border-radius: 8px; }
+        .check-table td.error { color: var(--danger); font-weight: 700; }
+        .check-table td.pass { color: var(--success); font-weight: 700; }
+        .error-msg { font-size: 0.85rem; color: var(--danger); margin-top: 5px; display: block; }
+
+        .final-report { border: 2px solid var(--slate-200); padding: 20px; border-radius: 8px; margin-top: 20px; text-align: center; font-weight: 700; font-size: 1.1rem; }
+        .report-fail { border-color: var(--danger); background: #fef2f2; color: var(--danger); }
+        .report-pass { border-color: var(--success); background: #f0fdf4; color: var(--success); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1><i class="fa-solid fa-school"></i> 성수고 수강과목 통합 점검 시스템</h1>
+        <div class="dept-title">- 교육과정부 -</div>
+        <p style="color: #64748b; font-size: 0.95rem;">선택 과목 점검 및 172학점, 공동교육과정, 위계성 완벽 분석</p>
+    </header>
+
+    <div class="card">
+        <div class="card-title"><i class="fa-solid fa-user-check"></i> 학생 본인 인증</div>
+        <div class="search-area">
+            <input type="text" id="inputId" placeholder="학번 5자리 (예: 20808)">
+            <input type="text" id="inputName" placeholder="성명 입력">
+            <button id="searchBtn" onclick="searchStudent()" disabled><i class="fa-solid fa-spinner fa-spin" id="loadingIcon"></i> 데이터 로딩중...</button>
+        </div>
+        <div id="statusMsg" class="loading-status">서버에서 최신 데이터를 불러오고 있습니다...</div>
+    </div>
+
+    <div id="resultSection" style="display: none;">
+        
+        <div class="card">
+            <div class="card-title"><i class="fa-solid fa-link"></i> 공동교육과정 수강 과목 추가 (옵션)</div>
+            <div class="joint-input-area">
+                <select id="jcSem">
+                    <option value="2학년 1학기">2-1학기</option><option value="2학년 2학기">2-2학기</option>
+                    <option value="3학년 1학기">3-1학기</option><option value="3학년 2학기">3-2학기</option>
+                </select>
+                <select id="jcGroup">
+                    <option value="국어">국어</option><option value="수학">수학</option><option value="영어">영어</option>
+                    <option value="사회">사회</option><option value="과학">과학</option><option value="예술">예술</option>
+                    <option value="체육">체육</option><option value="생활·교양">생활·교양</option>
+                </select>
+                <input type="text" id="jcName" placeholder="과목명 (예: 고급 물리학)">
+                <input type="number" id="jcCredit" placeholder="학점" style="width: 70px;">
+                <button onclick="addJointCourse()">추가</button>
+            </div>
+            <div id="jointListContainer" style="margin-top: 15px;"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-title"><i class="fa-solid fa-list-check"></i> <span id="resStudentInfo"></span> 수강 확정 내역</div>
+            <div id="historyContainer"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-title"><i class="fa-solid fa-plus-circle"></i> 향후 과목 선택 시뮬레이션</div>
+            <p style="font-size:0.85rem; color:#64748b;">앞으로 추가 이수할 학기별 선택 과목을 터치하여 시뮬레이션 해보세요.</p>
+            <div id="simContainer"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-title"><i class="fa-solid fa-chart-pie"></i> 졸업 요건 및 필수 점검 최종 결과</div>
+            <table class="check-table" style="width: 100%; margin-bottom:20px;">
+                <thead><tr><th>특별 점검 항목</th><th>기준</th><th>현재 상태</th><th>결과</th></tr></thead>
+                <tbody id="specialCheckBody"></tbody>
+            </table>
+            <table class="check-table" style="width: 100%;">
+                <thead><tr><th>교과군</th><th>필수 학점</th><th>현재+예정</th><th>상태</th></tr></thead>
+                <tbody id="checkTableBody"></tbody>
+            </table>
+            <div id="finalReport" class="final-report"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 링크는 완벽하게 세팅되어 있습니다!
+    const GOOGLE_SHEET_URLS = {
+        s1: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1z8VlK-MeVZinqME6We4qrbphcC9OEXu7ST9apAd5bD33dRlLQT4UjotNTrOnEtU1O73pKi8K41Oz/pub?gid=0&single=true&output=csv",
+        p1: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1z8VlK-MeVZinqME6We4qrbphcC9OEXu7ST9apAd5bD33dRlLQT4UjotNTrOnEtU1O73pKi8K41Oz/pub?gid=885473246&single=true&output=csv",
+        s2: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1z8VlK-MeVZinqME6We4qrbphcC9OEXu7ST9apAd5bD33dRlLQT4UjotNTrOnEtU1O73pKi8K41Oz/pub?gid=208376759&single=true&output=csv",
+        p2: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1z8VlK-MeVZinqME6We4qrbphcC9OEXu7ST9apAd5bD33dRlLQT4UjotNTrOnEtU1O73pKi8K41Oz/pub?gid=1098200470&single=true&output=csv"
+    };
+
+    const SEMESTERS = ['1학년 1학기', '1학년 2학기', '2학년 1학기', '2학년 2학기', '3학년 1학기', '3학년 2학기'];
+    const REQUIRED = { "국어": 10, "수학": 10, "영어": 10, "한국사": 6, "사회": 10, "과학": 12, "체육": 10, "예술": 10, "생활·교양": 16 };
+    
+    let db = { s1: [], p1: [], s2: [], p2: [] };
+    let currentStudent = null;
+    let myCourses = [];
+    let selectedSimSubjects = [];
+    let jointCourses = [];
+
+    // [초강력 매칭용 정규화] 과목명에서 쓸데없는 특수문자를 다 지우고 뼈대만 대조합니다.
+    function normalizeSubjectName(name) {
+        if(!name) return '';
+        return String(name).replace(/\s/g, '').replace(/★/g, '')
+                           .replace(/[ⅠⅡⅢⅣIIV12]+/g, '')
+                           .replace(/[\(\)\[\]]/g, '')
+                           .toUpperCase();
+    }
+
+    window.onload = async function() {
+        try {
+            const fetchSheet = (url, key) => {
+                return new Promise((resolve) => {
+                    Papa.parse(url, {
+                        download: true, header: false, skipEmptyLines: true,
+                        complete: function(results) {
+                            const rows = results.data;
+                            if(rows.length === 0) { resolve(); return; }
+
+                            // ─────────────────────────────────────────
+                            // 1. 편제표 파일 (p1, p2) - 절대 좌표계 & 상속 시스템 (선택과목 100% 구출)
+                            // ─────────────────────────────────────────
+                            if (key === 'p1' || key === 'p2') {
+                                let colCreditBase = -1, hRowIdx = -1;
+                                
+                                for(let i=0; i<Math.min(15, rows.length); i++) {
+                                    if(!rows[i]) continue;
+                                    let idx = rows[i].findIndex(c => String(c).replace(/\s/g,'').includes('운영학점'));
+                                    if(idx === -1) idx = rows[i].findIndex(c => String(c).replace(/\s/g,'').includes('기준학점'));
+                                    if(idx !== -1) { hRowIdx = i; colCreditBase = idx; break; }
+                                }
+
+                                if(hRowIdx !== -1 && colCreditBase >= 3) {
+                                    // [절대 좌표 법칙] 학점 바로 왼쪽은 무조건 과목명이다!
+                                    let colName = colCreditBase - 1;
+                                    let colGroup = colCreditBase - 3;
+                                    
+                                    // 학기 칸은 운영학점 오른쪽으로 6칸 고정! (이로 인해 정보 중복 버그 원천 차단)
+                                    let semCols = [colCreditBase+1, colCreditBase+2, colCreditBase+3, colCreditBase+4, colCreditBase+5, colCreditBase+6];
+
+                                    let lastTopGubun = '지정';
+                                    let activeSems = []; // 빈칸 상속용
+                                    let parsedData = [];
+
+                                    for(let i = hRowIdx + 1; i < rows.length; i++) {
+                                        let row = rows[i];
+                                        if(!row || row.length <= colName) continue;
+
+                                        // 가장 앞의 2칸을 읽어서 학교지정인지 학생선택인지 파악
+                                        let rawGubun = String(row[0]||'').trim() + String(row[1]||'').trim();
+                                        if(rawGubun.includes('지정')) lastTopGubun = '지정';
+                                        else if(rawGubun.includes('선택')) lastTopGubun = '선택';
+
+                                        let name = String(row[colName] || '').replace(/★/g, '').replace(/\r?\n|\r/g, ' ').trim();
+                                        if(!name || name === '과목' || name.includes('소계') || name.includes('합계') || name.includes('이수단위') || /^택\s*\d*$/.test(name)) continue;
+
+                                        let rawGroup = String(row[colGroup] || '').trim().replace(/\n/g, '');
+                                        let group = rawGroup.replace(/\(.*\)/g, '').trim();
+
+                                        let baseCredit = parseInt(String(row[colCreditBase] || '').replace(/[^0-9]/g, ''), 10) || 0;
+                                        let rowHasSem = false;
+                                        let tempSems = [];
+                                        let hasTaekInRow = false;
+
+                                        for(let s = 0; s < 6; s++) {
+                                            let cellVal = String(row[semCols[s]] || '').trim();
+                                            if(cellVal.includes('택') || cellVal === 'O' || cellVal === '○') hasTaekInRow = true;
+                                            
+                                            // 순수 숫자만 학점으로 인정
+                                            let credit = 0;
+                                            if (/^[1-9][0-9]*$/.test(cellVal.replace(/\s/g,''))) {
+                                                credit = parseInt(cellVal.replace(/\s/g,''), 10);
+                                            } else if (cellVal.includes('택') || cellVal === 'O' || cellVal === '○' || cellVal === '◎') {
+                                                credit = 1; // 활성 마커
+                                            }
+
+                                            if(credit > 0) {
+                                                rowHasSem = true;
+                                                tempSems.push({ sIdx: s, credit: credit });
+                                            }
+                                        }
+
+                                        // [핵심] 학생선택 블록에 속해 있거나, 줄에 '택'이 있으면 무조건 선택과목!
+                                        let isChoice = lastTopGubun === '선택' || name.includes('택') || hasTaekInRow;
+                                        let gubun = isChoice ? '선택' : '지정';
+
+                                        let cleanName = normalizeSubjectName(name);
+                                        if(cleanName.includes('한국사')) group = '한국사';
+                                        else if(group.includes('사회') || group.includes('역사') || group.includes('도덕') || group.includes('지리') || group.includes('윤리')) group = '사회';
+                                        else if(group.includes('과학') || group.includes('물리') || group.includes('화학') || group.includes('생명') || group.includes('지구')) group = '과학';
+                                        else if(group.includes('체육') || group.includes('스포츠')) group = '체육';
+                                        else if(group.includes('예술') || group.includes('음악') || group.includes('미술')) group = '예술';
+                                        else if(group.includes('기술') || group.includes('가정') || group.includes('정보') || group.includes('외국어') || group.includes('한문') || group.includes('교양') || group.includes('일본') || group.includes('중국')) group = '생활·교양';
+                                        else if(group.includes('국어') || group.includes('문학') || group.includes('언어') || group.includes('독서')) group = '국어';
+                                        else if(group.includes('수학') || group.includes('기하') || group.includes('대수') || group.includes('미적분') || group.includes('통계')) group = '수학';
+                                        else if(group.includes('영어')) group = '영어';
+
+                                        // 병합셀 학기 상속 (경제 과목 살려내기)
+                                        if (rowHasSem) {
+                                            activeSems = tempSems;
+                                        } else if (gubun === '선택') {
+                                            tempSems = activeSems.map(sem => ({ sIdx: sem.sIdx, credit: 1 }));
+                                        }
+
+                                        tempSems.forEach(sem => {
+                                            // 시뮬레이션 요구사항: 선택과목은 일반 3학점, 생활교양 2학점 고정!
+                                            let finalCredit = sem.credit;
+                                            if (gubun === '선택') {
+                                                finalCredit = group === '생활·교양' ? 2 : 3;
+                                            } else {
+                                                finalCredit = sem.credit > 1 ? sem.credit : (baseCredit > 0 ? baseCredit : 3);
+                                            }
+                                            parsedData.push({ '구분': gubun, '교과군': group, '과목명': name, '학점': finalCredit, '학기': SEMESTERS[sem.sIdx], 'semIdx': sem.sIdx+1 });
+                                        });
+                                    }
+                                    db[key] = parsedData;
+                                }
+                            }
+                            // ─────────────────────────────────────────
+                            // 2. 나이스 수강신청 파싱 (s2) - 학기 및 과목 헤더 완벽 매핑
+                            // ─────────────────────────────────────────
+                            else if(key === 's2') {
+                                let semesterMap = {};
+                                let s2HeaderRowIdx = -1;
+                                
+                                for(let i=0; i<Math.min(10, rows.length); i++) {
+                                    let r = rows[i].map(c => String(c).replace(/\s/g,''));
+                                    if(r.some(c => c.includes('2-1') || c.includes('2-2') || c.includes('3-1'))) {
+                                        s2HeaderRowIdx = i;
+                                        let currentSem = '2학년 1학기';
+                                        for(let j=0; j<r.length; j++) {
+                                            if(r[j].includes('1-1') || r[j].includes('1학년1학기')) currentSem = '1학년 1학기';
+                                            else if(r[j].includes('1-2') || r[j].includes('1학년2학기')) currentSem = '1학년 2학기';
+                                            else if(r[j].includes('2-1') || r[j].includes('2학년1학기')) currentSem = '2학년 1학기';
+                                            else if(r[j].includes('2-2') || r[j].includes('2학년2학기')) currentSem = '2학년 2학기';
+                                            else if(r[j].includes('3-1') || r[j].includes('3학년1학기')) currentSem = '3학년 1학기';
+                                            else if(r[j].includes('3-2') || r[j].includes('3학년2학기')) currentSem = '3학년 2학기';
+                                            semesterMap[j] = currentSem;
+                                        }
+                                        break;
+                                    }
+                                }
+
+                                let nameCol = -1, dataStartIdx = -1;
+                                for(let i=0; i<Math.min(15, rows.length); i++) {
+                                    nameCol = rows[i].findIndex(c => String(c).replace(/\s/g,'').includes('이름') || String(c).replace(/\s/g,'').includes('성명'));
+                                    if(nameCol !== -1) {
+                                        for(let k=i+1; k<Math.min(i+10, rows.length); k++) {
+                                            if(rows[k] && rows[k].some((c, cIdx) => cIdx < nameCol && /^\d{4,5}$/.test(String(c).trim()))) {
+                                                dataStartIdx = k; break;
+                                            }
+                                        }
+                                        if(dataStartIdx !== -1) break;
+                                    }
+                                }
+
+                                if (dataStartIdx !== -1 && nameCol !== -1) {
+                                    let superHeaders = {};
+                                    for(let c = nameCol + 1; c < rows[0].length; c++) {
+                                        let hText = '';
+                                        for(let r = 0; r < dataStartIdx; r++) {
+                                            let text = String(rows[r][c]).trim();
+                                            if(!text) continue;
+                                            // A, B 같은 알파벳이나 택, 과목 등 쓸모없는 헤더는 스킵하여 순수 과목명만 추출
+                                            if(text === '과목' || text === 'A' || text === 'B' || text === 'C' || text === 'D' || text.includes('선택그룹') || text.includes('택')) continue;
+                                            hText += text;
+                                        }
+                                        superHeaders[c] = normalizeSubjectName(hText);
+                                    }
+
+                                    let parsedData = [];
+                                    for(let i = dataStartIdx; i < rows.length; i++) {
+                                        let row = rows[i];
+                                        let stName = String(row[nameCol]).trim();
+                                        if(!stName) continue;
+
+                                        let ids = [];
+                                        for(let j=0; j<nameCol; j++) {
+                                            let val = String(row[j]).trim();
+                                            if(/^\d{4,5}$/.test(val)) ids.push(val);
+                                        }
+                                        let stId = ids.find(id => id.startsWith('2')) || ids[ids.length - 1];
+                                        if(!stId) continue;
+
+                                        parsedData.push({ '학번': stId, '성명': stName, 'dummy': true });
+
+                                        for(let c = nameCol + 1; c < row.length; c++) {
+                                            let cellVal = String(row[c]).trim().toUpperCase();
+                                            if(cellVal === '1' || cellVal === 'O' || cellVal === '○' || cellVal === 'Y') {
+                                                if(superHeaders[c] && semesterMap[c]) {
+                                                    parsedData.push({ '학번': stId, '성명': stName, '학기': semesterMap[c], 'raw과목': superHeaders[c] });
+                                                }
+                                            }
+                                        }
+                                    }
+                                    db[key] = parsedData;
+                                }
+                            } 
+                            // ─────────────────────────────────────────
+                            // 3. 1학년 명단 (s1)
+                            // ─────────────────────────────────────────
+                            else {
+                                let parsedData = [];
+                                for(let i=0; i<rows.length; i++) {
+                                    let r = rows[i];
+                                    let idCol = r.findIndex(c => /^\d{4,5}$/.test(String(c).trim()));
+                                    let nameCol = r.findIndex(c => /^[가-힣]{2,5}$/.test(String(c).trim()));
+                                    if (idCol !== -1 && nameCol !== -1) {
+                                        parsedData.push({ '학번': String(r[idCol]).trim(), '성명': String(r[nameCol]).trim() });
+                                    }
+                                }
+                                db[key] = parsedData;
+                            }
+                            resolve();
+                        }
+                    });
+                });
+            };
+
+            await Promise.all([fetchSheet(GOOGLE_SHEET_URLS.s1, 's1'), fetchSheet(GOOGLE_SHEET_URLS.p1, 'p1'), fetchSheet(GOOGLE_SHEET_URLS.s2, 's2'), fetchSheet(GOOGLE_SHEET_URLS.p2, 'p2')]);
+
+            const btn = document.getElementById('searchBtn');
+            btn.disabled = false;
+            btn.innerHTML = '점검 결과 확인하기';
+            document.getElementById('statusMsg').innerText = "✅ 시스템 준비 완료! 학번과 성명을 입력하세요.";
+            document.getElementById('statusMsg').style.color = "var(--success)";
+
+        } catch (e) {
+            document.getElementById('statusMsg').innerText = "❌ 오류: 데이터를 불러오지 못했습니다.";
+            document.getElementById('statusMsg').style.color = "var(--danger)";
+        }
+    };
+
+    function searchStudent() {
+        const id = document.getElementById('inputId').value.trim();
+        const name = document.getElementById('inputName').value.trim();
+        if(!id || !name) return alert("학번과 이름을 정확히 입력해주세요.");
+
+        selectedSimSubjects = [];
+        jointCourses = [];
+        let grade = 0;
+
+        if(db.s1.find(s => String(s.학번) === id && s.성명 === name)) { grade = 1; currentStudent = { id, name, grade: 1 }; } 
+        else if(db.s2.find(s => String(s.학번) === id && s.성명 === name)) { grade = 2; currentStudent = { id, name, grade: 2 }; }
+
+        if(!grade) return alert("등록된 학생 데이터가 없습니다. 학번과 성명을 다시 확인하세요.");
+
+        document.getElementById('resultSection').style.display = 'block';
+        document.getElementById('resStudentInfo').innerText = `${id} ${name} (${grade}학년)`;
+        document.getElementById('jointListContainer').innerHTML = '';
+        renderSelectionAndCheck();
+    }
+
+    function addJointCourse() {
+        const sem = document.getElementById('jcSem').value;
+        const group = document.getElementById('jcGroup').value;
+        const name = document.getElementById('jcName').value.trim();
+        const credit = parseInt(document.getElementById('jcCredit').value);
+
+        if(!name || isNaN(credit) || credit <= 0) return alert("과목명과 정상적인 학점을 입력하세요.");
+
+        jointCourses.push({
+            '학기': sem, 'semIdx': SEMESTERS.indexOf(sem) + 1,
+            '교과군': group, '과목명': name, '학점': credit, '구분': '공동'
+        });
+
+        document.getElementById('jcName').value = '';
+        document.getElementById('jcCredit').value = '';
+        renderJointList();
+        renderSelectionAndCheck();
+    }
+
+    function removeJointCourse(index) {
+        jointCourses.splice(index, 1);
+        renderJointList();
+        renderSelectionAndCheck();
+    }
+
+    function renderJointList() {
+        const container = document.getElementById('jointListContainer');
+        if(jointCourses.length === 0) { container.innerHTML = ''; return; }
+        
+        let html = `<table><thead><tr><th>학기</th><th>교과군</th><th>과목명</th><th>학점</th><th>취소</th></tr></thead><tbody>`;
+        jointCourses.forEach((c, idx) => {
+            html += `<tr><td>${c.학기}</td><td>${c.교과군}</td><td><strong>${c.과목명}</strong> <span class="tag tag-joint">공동</span></td><td>${c.학점}</td>
+                     <td><button style="padding:4px 8px; background:var(--danger); font-size:0.8rem;" onclick="removeJointCourse(${idx})">삭제</button></td></tr>`;
+        });
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+    }
+
+    function renderSelectionAndCheck() {
+        myCourses = [];
+        let rawCourses = [];
+
+        if(currentStudent.grade === 1) {
+            rawCourses = db.p1.filter(p => p.구분 === '지정');
+            
+            // [1학년 예외 조치] 보건, 진로와 직업 강제 주입
+            if(!rawCourses.some(c => c.과목명 === '보건')) rawCourses.push({ 구분: '지정', 교과군: '생활·교양', 과목명: '보건', 학점: 2, 학기: '1학년 통합' });
+            if(!rawCourses.some(c => c.과목명.includes('진로와'))) rawCourses.push({ 구분: '지정', 교과군: '생활·교양', 과목명: '진로와 직업', 학점: 2, 학기: '1학년 통합' });
+
+        } else {
+            let fixed = db.p2.filter(p => p.구분 === '지정');
+            let choices = db.p2.filter(p => p.구분 === '선택');
+            let mySelections = db.s2.filter(s => s.학번 === currentStudent.id && !s.dummy);
+            
+            let matchedChoices = [];
+            mySelections.forEach(sel => {
+                // 경제와 경제수학이 헷갈리지 않게, 100% 완전 일치 매칭(===)만 허용합니다!
+                let matched = choices.filter(p => p.학기 === sel.학기 && normalizeSubjectName(p.과목명) === sel.raw과목);
+                matchedChoices.push(...matched);
+            });
+            rawCourses = [...fixed, ...matchedChoices];
+
+            // [2학년 예외 조치] 정보, 일본어 중복 폭주 차단 및 1학년으로 강제 편입
+            rawCourses.forEach(c => {
+                if(c.과목명.includes('정보')) { c.학기 = '1학년 통합'; c.학점 = 3; c.구분 = '지정'; }
+                if(c.과목명.includes('일본어')) { c.학기 = '1학년 통합'; c.학점 = 3; c.구분 = '지정'; }
+            });
+            
+            // 없는 경우를 대비해 뼈대 삽입
+            if(!rawCourses.some(c => c.과목명 === '정보')) rawCourses.push({ 구분: '지정', 교과군: '생활·교양', 과목명: '정보', 학점: 3, 학기: '1학년 통합' });
+            if(!rawCourses.some(c => c.과목명.includes('일본어'))) rawCourses.push({ 구분: '지정', 교과군: '생활·교양', 과목명: '일본어', 학점: 3, 학기: '1학년 통합' });
+        }
+
+        // [문제 1, 5 완전 해결] 1학년 과목(1-1, 1-2)은 모두 하나로 뭉침!
+        let merged1stYear = {};
+        let otherCourses = [];
+        
+        rawCourses.forEach(c => {
+            if (currentStudent.grade === 1 || c.학기.includes('1학년')) {
+                let key = c.과목명;
+                if (!merged1stYear[key]) {
+                    merged1stYear[key] = { ...c, 학기: '1학년 통합', 학점: 0 };
+                }
+                merged1stYear[key].학점 += c.학점;
+            } else {
+                otherCourses.push(c);
+            }
+        });
+        
+        myCourses = [...Object.values(merged1stYear), ...otherCourses];
+
+        const container = document.getElementById('historyContainer');
+        container.innerHTML = '';
+
+        const DISPLAY_SEMESTERS = ['1학년 통합', '2학년 1학기', '2학년 2학기', '3학년 1학기', '3학년 2학기'];
+        
+        DISPLAY_SEMESTERS.forEach(sem => {
+            let coursesInSem = myCourses.filter(c => c.학기 === sem);
+            // 2학년은 1학년 통합 내역을 화면에 보여줄 필요 없이 합산에만 씁니다.
+            if(coursesInSem.length > 0 && !(currentStudent.grade === 2 && sem === '1학년 통합')) {
+                let block = document.createElement('div');
+                block.className = 'semester-block';
+                let headerText = sem === '1학년 통합' ? '1학년 공통 및 지정 확정 내역 (1, 2학기 통합)' : `${sem} 확정 내역`;
+                let html = `<div class="semester-header">${headerText}</div><table>`;
+                coursesInSem.forEach(c => {
+                    html += `<tr><td style="width:20%">${c.교과군}</td><td style="width:50%"><strong>${c.과목명}</strong></td>
+                             <td style="width:15%"><span class="tag ${c.구분 === '지정' ? 'tag-fixed' : 'tag-choice'}">${c.구분}</span></td><td style="width:15%">${c.학점}학점</td></tr>`;
+                });
+                html += `</table>`;
+                block.innerHTML = html;
+                container.appendChild(block);
+            }
+        });
+
+        renderSimulation();
+        calculateAudit();
+    }
+
+    function renderSimulation() {
+        const container = document.getElementById('simContainer');
+        container.innerHTML = '';
+
+        const targetP = currentStudent.grade === 1 ? db.p1 : db.p2;
+        const choicePool = targetP.filter(p => p.구분 === '선택' && !myCourses.some(cc => cc.과목명 === p.과목명 && (cc.학기 === p.학기 || cc.학기 === '1학년 통합')));
+
+        // 시뮬레이션 노출 학기 엄격 통제
+        let simSemesters = currentStudent.grade === 1 
+            ? ['2학년 1학기', '2학년 2학기', '3학년 1학기', '3학년 2학기']
+            : ['3학년 1학기', '3학년 2학기'];
+
+        simSemesters.forEach(sem => {
+            let poolInSem = choicePool.filter(c => c.학기 === sem);
+            poolInSem = poolInSem.filter((v, i, a) => a.findIndex(t => t.과목명 === v.과목명) === i);
+
+            if(poolInSem.length > 0) {
+                let block = document.createElement('div');
+                block.className = 'semester-block';
+                let gridHtml = document.createElement('div');
+                gridHtml.className = 'simulation-grid';
+
+                poolInSem.forEach(p => {
+                    let isSelected = selectedSimSubjects.some(s => s.과목명 === p.과목명 && s.학기 === p.학기);
+                    let card = document.createElement('div');
+                    card.className = `subject-card ${isSelected ? 'active' : ''}`;
+                    card.innerHTML = `<div style="font-weight:700; margin-bottom:5px;">${p.과목명}</div><span style="font-size:0.85rem;">${p.교과군} | ${p.학점}학점</span>`;
+                    card.onclick = () => {
+                        if(isSelected) {
+                            selectedSimSubjects = selectedSimSubjects.filter(s => !(s.과목명 === p.과목명 && s.학기 === p.학기));
+                        } else {
+                            selectedSimSubjects.push(p);
+                        }
+                        renderSimulation();
+                        calculateAudit();
+                    };
+                    gridHtml.appendChild(card);
+                });
+
+                block.innerHTML = `<div class="semester-header" style="background:#e0f2fe;">${sem} 선택 가능 과목</div>`;
+                block.appendChild(gridHtml);
+                container.appendChild(block);
+            }
+        });
+    }
+
+    function calculateAudit() {
+        const totalCourses = [...myCourses, ...selectedSimSubjects, ...jointCourses];
+        let totals = {};
+        for(let key in REQUIRED) totals[key] = 0;
+
+        totalCourses.forEach(c => {
+            if(totals[c.교과군] !== undefined) totals[c.교과군] += Number(c.학점);
+        });
+
+        const auditBody = document.getElementById('checkTableBody');
+        auditBody.innerHTML = '';
+        let isBasePass = true;
+
+        for(let group in REQUIRED) {
+            const has = totals[group];
+            const goal = REQUIRED[group];
+            const pass = has >= goal;
+            if(!pass) isBasePass = false;
+            auditBody.innerHTML += `<tr><td>${group}</td><td>${goal}</td><td>${has}</td><td class="${pass ? 'pass' : 'error'}">${pass ? '✔️ 충족' : '❌ 미달'}</td></tr>`;
+        }
+
+        const specialBody = document.getElementById('specialCheckBody');
+        specialBody.innerHTML = '';
+        let isSpecialPass = true;
+
+        const addSpRow = (name, standard, current, isPass, msg='') => {
+            if(!isPass) isSpecialPass = false;
+            specialBody.innerHTML += `<tr><td>${name}</td><td>${standard}</td><td>${current} ${msg ? `<br><span class="error-msg">${msg}</span>` : ''}</td><td class="${isPass ? 'pass' : 'error'}">${isPass ? '✔️ 정상' : '❌ 오류'}</td></tr>`;
+        };
+
+        const ksy = (totals['국어'] || 0) + (totals['수학'] || 0) + (totals['영어'] || 0);
+        addSpRow('국·수·영 이수 학점', '81학점 이하', `${ksy} 학점`, ksy <= 81);
+
+        const totalCredits = totalCourses.reduce((sum, c) => sum + parseInt(c.학점), 0);
+        addSpRow('최종 총 교과 학점', '172학점 이상', `${totalCredits} 학점`, totalCredits >= 172);
+
+        // [중복 선택 완벽 철폐] 동일 과목 2번 누르면 무조건 에러!
+        let dupErrors = [];
+        let choiceCounts = {};
+        totalCourses.filter(c => c.구분 === '선택').forEach(c => {
+            choiceCounts[c.과목명] = (choiceCounts[c.과목명] || 0) + 1;
+        });
+        for(let name in choiceCounts) {
+            if(choiceCounts[name] > 1) dupErrors.push(name);
+        }
+        addSpRow('과목 중복 신청 점검', '동일 선택과목 중복 금지', dupErrors.length > 0 ? '중복 발견' : '이상 없음', dupErrors.length === 0, dupErrors.length > 0 ? `[${dupErrors.join(', ')}] 중복 선택됨` : '');
+
+        // 시뮬레이션 개수 철저 제한 (일반 4개 + 교양 제한)
+        let sim31Reg = selectedSimSubjects.filter(c => c.학기 === '3학년 1학기' && c.교과군 !== '생활·교양').length;
+        let sim31Lib = selectedSimSubjects.filter(c => c.학기 === '3학년 1학기' && c.교과군 === '생활·교양').length;
+        addSpRow('3학년 1학기 선택수', '일반 4개 + 교양 1개', `일반 ${sim31Reg}개, 교양 ${sim31Lib}개`, sim31Reg === 4 && sim31Lib === 1);
+
+        let sim32Reg = selectedSimSubjects.filter(c => c.학기 === '3학년 2학기' && c.교과군 !== '생활·교양').length;
+        let sim32Lib = selectedSimSubjects.filter(c => c.학기 === '3학년 2학기' && c.교과군 === '생활·교양').length;
+        addSpRow('3학년 2학기 선택수', '일반 4개 + 교양 2개', `일반 ${sim32Reg}개, 교양 ${sim32Lib}개`, sim32Reg === 4 && sim32Lib === 2);
+
+        // 과학 위계 점검 완화 (같은 학기 수강은 OK)
+        let seqErrors = [];
+        const checkSeq = (pre, posts) => {
+            let postCourses = totalCourses.filter(c => posts.includes(c.과목명));
+            if(postCourses.length > 0) {
+                let preCourses = totalCourses.filter(c => pre.includes(c.과목명));
+                if(preCourses.length === 0) {
+                    seqErrors.push(`[${postCourses.map(c=>c.과목명).join(',')}] 이수 전 [${pre.join(' 또는 ')}] 필수`);
+                } else {
+                    let preSem = Math.min(...preCourses.map(c => c.semIdx));
+                    let postSem = Math.min(...postCourses.map(c => c.semIdx));
+                    if(preSem > postSem) seqErrors.push(`[${postCourses.map(c=>c.과목명).join(',')}]는 [${pre.join(' 또는 ')}] 보다 먼저 이수 불가 (동시수강 가능)`);
+                }
+            }
+        };
+
+        checkSeq(['물리학', '물리학Ⅰ'], ['역학과 에너지', '전자기와 양자']);
+        checkSeq(['화학', '화학Ⅰ'], ['물질과 에너지', '화학 반응의 세계']);
+        checkSeq(['생명과학', '생명과학Ⅰ'], ['세포와 물질대사', '생물의 유전']);
+        checkSeq(['지구과학', '지구과학Ⅰ'], ['지구시스템과학', '행성우주과학']);
+        checkSeq(['대수', '미적분Ⅰ'], ['미적분Ⅱ']);
+
+        addSpRow('과학/수학 위계 점검', '선이수 과목 준수', seqErrors.length > 0 ? '위계 위반' : '이상 없음', seqErrors.length === 0, seqErrors.join('<br>'));
+
+        const report = document.getElementById('finalReport');
+        if(isBasePass && isSpecialPass) {
+            report.innerText = "✅ [최종 통과] 모든 교과 필수 학점, 172학점, 위계성을 완벽히 충족합니다.";
+            report.className = "final-report report-pass";
+        } else {
+            report.innerText = "⚠️ [경고] 요건 미달, 한도 초과, 위계 위반 등 빨간색 오류 항목을 확인하세요.";
+            report.className = "final-report report-fail";
+        }
+    }
+</script>
+</body>
+</html>
