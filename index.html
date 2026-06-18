@@ -121,7 +121,7 @@
 </div>
 
 <script>
-    // 링크 유지 영역
+    // 선생님의 링크 4개가 안전하게 세팅되어 있습니다. 수정 불필요!
     const GOOGLE_SHEET_URLS = {
         s1: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1z8VlK-MeVZinqME6We4qrbphcC9OEXu7ST9apAd5bD33dRlLQT4UjotNTrOnEtU1O73pKi8K41Oz/pub?gid=0&single=true&output=csv",
         p1: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1z8VlK-MeVZinqME6We4qrbphcC9OEXu7ST9apAd5bD33dRlLQT4UjotNTrOnEtU1O73pKi8K41Oz/pub?gid=885473246&single=true&output=csv",
@@ -138,7 +138,7 @@
     let selectedSimSubjects = [];
     let jointCourses = [];
 
-    // 완벽한 문자열 정규화 (띄어쓰기, 로마자 제거)
+    // 과목명에서 띄어쓰기, 숫자, 로마자 등 매칭을 방해하는 찌꺼기를 완벽히 제거
     function normalizeSubjectName(name) {
         if(!name) return '';
         return String(name).replace(/\s/g, '').replace(/★/g, '')
@@ -158,65 +158,62 @@
                             if(rows.length === 0) { resolve(); return; }
 
                             // ─────────────────────────────────────────
-                            // 1. 편제표 파일 (p1, p2) - 절대 좌표계 & 선택과목 구출기
+                            // 1. 편제표 파일 파싱 (절대 좌표 및 상속 엔진 도입)
                             // ─────────────────────────────────────────
                             if (key === 'p1' || key === 'p2') {
-                                let colCreditBase = -1, hRowIdx = -1;
+                                let colOpCredit = -1, hRowIdx = -1;
                                 
+                                // 무조건 '운영학점' 글자가 있는 셀을 기준으로 모든 좌표 설정
                                 for(let i=0; i<Math.min(15, rows.length); i++) {
                                     if(!rows[i]) continue;
-                                    let idx = rows[i].findIndex(c => String(c).replace(/\s/g,'').includes('운영학점') || String(c).replace(/\s/g,'').includes('기준학점'));
-                                    if(idx !== -1) { hRowIdx = i; colCreditBase = idx; break; }
+                                    let idx = rows[i].findIndex(c => String(c).replace(/\s/g,'').includes('운영학점'));
+                                    if(idx !== -1) { hRowIdx = i; colOpCredit = idx; break; }
                                 }
 
-                                if(hRowIdx !== -1 && colCreditBase >= 3) {
-                                    let colName = colCreditBase - 1;
-                                    let colGroup = colCreditBase - 3;
-                                    let colGubun = colCreditBase - 4;
-                                    let semCols = [colCreditBase+1, colCreditBase+2, colCreditBase+3, colCreditBase+4, colCreditBase+5, colCreditBase+6];
+                                if(hRowIdx !== -1 && colOpCredit >= 5) {
+                                    let colGubun = colOpCredit - 5;
+                                    let colGroup = colOpCredit - 4;
+                                    let colName = colOpCredit - 2;
+                                    let colBaseCredit = colOpCredit - 1;
+                                    let semCols = [colOpCredit+1, colOpCredit+2, colOpCredit+3, colOpCredit+4, colOpCredit+5, colOpCredit+6];
 
-                                    let lastTopGubun = '지정';
                                     let activeSems = [];
+                                    let lastGubun = '지정';
                                     let parsedData = [];
 
                                     for(let i = hRowIdx + 1; i < rows.length; i++) {
                                         let row = rows[i];
                                         if(!row || row.length <= colName) continue;
 
-                                        let rawGubun = String(row[0]||'').trim() + String(row[1]||'').trim();
-                                        if(rawGubun.includes('지정')) lastTopGubun = '지정';
-                                        else if(rawGubun.includes('선택')) lastTopGubun = '선택';
-
                                         let name = String(row[colName] || '').replace(/★/g, '').replace(/\r?\n|\r/g, ' ').trim();
                                         if(!name || name === '과목' || name.includes('소계') || name.includes('합계') || name.includes('이수단위') || /^택\s*\d*$/.test(name)) continue;
+
+                                        let rawGubun = String(row[colGubun]||'').trim();
+                                        if(rawGubun.includes('선택')) lastGubun = '선택';
+                                        else if(rawGubun.includes('지정') || rawGubun.includes('공통') || rawGubun.includes('필수')) lastGubun = '지정';
 
                                         let rawGroup = String(row[colGroup] || '').trim().replace(/\n/g, '');
                                         let group = rawGroup.replace(/\(.*\)/g, '').trim();
 
-                                        let baseCredit = parseInt(String(row[colCreditBase] || '').replace(/[^0-9]/g, ''), 10) || 0;
                                         let rowHasSem = false;
                                         let tempSems = [];
                                         let hasTaekInRow = false;
 
                                         for(let s = 0; s < 6; s++) {
                                             let cellVal = String(row[semCols[s]] || '').trim();
-                                            if(cellVal.includes('택') || cellVal === 'O' || cellVal === '○') hasTaekInRow = true;
-                                            
-                                            let credit = 0;
-                                            if (/^[1-9][0-9]*$/.test(cellVal.replace(/\s/g,''))) credit = 1; // 활성 마커
-                                            else if (cellVal.includes('택') || cellVal === 'O' || cellVal === '○' || cellVal === '◎') credit = 1;
+                                            let str = cellVal.replace(/\s/g, '');
+                                            if (str.includes('택')) hasTaekInRow = true;
 
-                                            if(credit > 0) {
+                                            // 오직 숫자만 인식! "1학기"를 "1"로 착각하는 정보 과목 버그 원천 차단
+                                            if (/^[1-9][0-9]*$/.test(str) || str.includes('택') || str === 'O' || str === '○' || str === '◎') {
                                                 rowHasSem = true;
-                                                tempSems.push({ sIdx: s });
+                                                tempSems.push(s);
                                             }
                                         }
 
-                                        // [선택과목 강제 판별]
-                                        // 엑셀에서 명확하지 않아도, 이름에 '택'이 있거나, 수동으로 짚어주신 과목들은 무조건 '선택'
+                                        // 선택과목 구출기 (일본어, 경제 등 병합되어 있거나 택 글씨가 빠진 과목 강제 지정)
                                         let knownChoices = ['주제탐구독서', '독서토론과글쓰기', '일본어', '세계시민과지리', '인공지능기초', '프로그래밍', '경제수학', '경제'];
-                                        let isChoice = lastTopGubun === '선택' || name.includes('택') || hasTaekInRow || knownChoices.some(k => name.replace(/\s/g,'').includes(k));
-                                        
+                                        let isChoice = lastGubun === '선택' || name.includes('택') || hasTaekInRow || knownChoices.some(k => name.replace(/\s/g,'').includes(k));
                                         let gubun = isChoice ? '선택' : '지정';
 
                                         let cleanName = normalizeSubjectName(name);
@@ -230,90 +227,90 @@
                                         else if(group.includes('수학') || group.includes('기하') || group.includes('대수') || group.includes('미적분') || group.includes('통계')) group = '수학';
                                         else if(group.includes('영어')) group = '영어';
 
-                                        if (rowHasSem) activeSems = tempSems;
-                                        else tempSems = activeSems; // 빈칸 상속 (경제 등)
+                                        let baseCredit = parseInt(String(row[colBaseCredit] || '').replace(/[^0-9]/g, ''), 10) || 0;
 
-                                        tempSems.forEach(sem => {
-                                            // [요구사항 강제 적용] 선택과목은 일반 3학점 / 교양 2학점 고정! 지정과목은 편제표 학점 사용.
+                                        // 빈칸 상속 시스템 (윗줄에서 체크된 학기를 그대로 물려받음)
+                                        if (rowHasSem) activeSems = tempSems;
+                                        else tempSems = activeSems;
+
+                                        if (tempSems.length === 0 && gubun === '선택') tempSems = [2, 3, 4, 5]; 
+
+                                        tempSems.forEach(sIdx => {
+                                            // 요구사항: 선택과목은 일반 3학점 / 교양 2학점 강제 고정! 지정과목은 편제표 학점 사용
                                             let finalCredit = baseCredit > 0 ? baseCredit : 3;
                                             if (gubun === '선택') {
                                                 finalCredit = (group === '생활·교양') ? 2 : 3;
                                             }
-                                            parsedData.push({ '구분': gubun, '교과군': group, '과목명': name, '학점': finalCredit, '학기': SEMESTERS[sem.sIdx], 'semIdx': sem.sIdx+1 });
+                                            parsedData.push({ '구분': gubun, '교과군': group, '과목명': name, '학점': finalCredit, '학기': SEMESTERS[sIdx], 'semIdx': sIdx+1 });
                                         });
                                     }
                                     db[key] = parsedData;
                                 }
                             }
                             // ─────────────────────────────────────────
-                            // 2. 나이스 수강신청 파일 (s2) - 완벽 매핑
+                            // 2. 나이스 수강신청 파일 (s2) 파싱
                             // ─────────────────────────────────────────
                             else if(key === 's2') {
-                                let semesterMap = {};
-                                let s2HeaderRowIdx = -1;
+                                let subjectRowIdx = -1, nameCol = -1;
                                 
-                                for(let i=0; i<Math.min(10, rows.length); i++) {
-                                    let r = rows[i].map(c => String(c).replace(/\s/g,''));
-                                    if(r.some(c => c.includes('2-1') || c.includes('2-2') || c.includes('3-1'))) {
-                                        s2HeaderRowIdx = i;
-                                        let currentSem = '2학년 1학기';
-                                        for(let j=0; j<r.length; j++) {
-                                            if(r[j].includes('1-1') || r[j].includes('1학년1학기')) currentSem = '1학년 1학기';
-                                            else if(r[j].includes('1-2') || r[j].includes('1학년2학기')) currentSem = '1학년 2학기';
-                                            else if(r[j].includes('2-1') || r[j].includes('2학년1학기')) currentSem = '2학년 1학기';
-                                            else if(r[j].includes('2-2') || r[j].includes('2학년2학기')) currentSem = '2학년 2학기';
-                                            else if(r[j].includes('3-1') || r[j].includes('3학년1학기')) currentSem = '3학년 1학기';
-                                            else if(r[j].includes('3-2') || r[j].includes('3학년2학기')) currentSem = '3학년 2학기';
-                                            semesterMap[j] = currentSem;
-                                        }
+                                for(let i=0; i<15; i++) {
+                                    if(!rows[i]) continue;
+                                    let idx = rows[i].findIndex(c => String(c).trim() === '과목');
+                                    if(idx !== -1) {
+                                        subjectRowIdx = i;
+                                        nameCol = idx - 1; // "이름" 칸은 "과목" 칸 바로 직전
                                         break;
                                     }
                                 }
 
-                                let nameCol = -1, dataStartIdx = -1;
-                                for(let i=0; i<Math.min(15, rows.length); i++) {
-                                    nameCol = rows[i].findIndex(c => String(c).replace(/\s/g,'').includes('이름') || String(c).replace(/\s/g,'').includes('성명'));
-                                    if(nameCol !== -1) {
-                                        for(let k=i+1; k<Math.min(i+10, rows.length); k++) {
-                                            if(rows[k] && rows[k].some((c, cIdx) => cIdx < nameCol && /^\d{4,5}$/.test(String(c).trim()))) {
-                                                dataStartIdx = k; break;
+                                if(subjectRowIdx !== -1 && nameCol !== -1) {
+                                    let semesterMap = {};
+                                    for(let r = 0; r < subjectRowIdx; r++) {
+                                        if(rows[r].some(c => String(c).includes('2-1') || String(c).includes('2-2'))) {
+                                            let currentSem = '2학년 1학기';
+                                            for(let c = nameCol + 2; c < rows[r].length; c++) {
+                                                let val = String(rows[r][c]).trim();
+                                                if (val.includes('1-1')) currentSem = '1학년 1학기';
+                                                else if (val.includes('1-2')) currentSem = '1학년 2학기';
+                                                else if (val.includes('2-1')) currentSem = '2학년 1학기';
+                                                else if (val.includes('2-2')) currentSem = '2학년 2학기';
+                                                else if (val.includes('3-1')) currentSem = '3학년 1학기';
+                                                else if (val.includes('3-2')) currentSem = '3학년 2학기';
+                                                semesterMap[c] = currentSem;
                                             }
+                                            break;
                                         }
-                                        if(dataStartIdx !== -1) break;
                                     }
-                                }
 
-                                if (dataStartIdx !== -1 && nameCol !== -1) {
                                     let superHeaders = {};
-                                    for(let c = nameCol + 1; c < rows[0].length; c++) {
-                                        let hText = '';
-                                        for(let r = 0; r < dataStartIdx; r++) {
-                                            let text = String(rows[r][c]).trim();
-                                            if(text === '과목' || text.includes('선택그룹') || text.includes('택')) continue;
-                                            hText += text;
-                                        }
-                                        superHeaders[c] = normalizeSubjectName(hText);
+                                    for(let c = nameCol + 2; c < rows[subjectRowIdx].length; c++) {
+                                        superHeaders[c] = normalizeSubjectName(rows[subjectRowIdx][c]);
                                     }
 
                                     let parsedData = [];
-                                    for(let i = dataStartIdx; i < rows.length; i++) {
+                                    for(let i = subjectRowIdx + 1; i < rows.length; i++) {
                                         let row = rows[i];
                                         let stName = String(row[nameCol]).trim();
                                         if(!stName) continue;
 
-                                        let ids = [];
+                                        let stId = '';
                                         for(let j=0; j<nameCol; j++) {
                                             let val = String(row[j]).trim();
-                                            if(/^\d{4,5}$/.test(val)) ids.push(val);
+                                            if(/^\d{4,5}$/.test(val) && val.startsWith('2')) stId = val;
                                         }
-                                        let stId = ids.find(id => id.startsWith('2')) || ids[ids.length - 1];
+                                        if(!stId) {
+                                            for(let j=0; j<nameCol; j++) {
+                                                let val = String(row[j]).trim();
+                                                if(/^\d{4,5}$/.test(val)) stId = val;
+                                            }
+                                        }
                                         if(!stId) continue;
 
                                         parsedData.push({ '학번': stId, '성명': stName, 'dummy': true });
 
-                                        for(let c = nameCol + 1; c < row.length; c++) {
-                                            let cellVal = String(row[c]).trim().toUpperCase();
-                                            if(cellVal === '1' || cellVal === 'O' || cellVal === '○' || cellVal === 'Y') {
+                                        for(let c = nameCol + 2; c < row.length; c++) {
+                                            let cellVal = String(row[c]).trim();
+                                            if(cellVal === '1' || cellVal === 'O' || cellVal === '○') {
                                                 if(superHeaders[c] && semesterMap[c]) {
                                                     parsedData.push({ '학번': stId, '성명': stName, '학기': semesterMap[c], 'raw과목': superHeaders[c] });
                                                 }
@@ -429,22 +426,30 @@
             
             let matchedChoices = [];
             mySelections.forEach(sel => {
-                let matched = choices.filter(p => p.학기 === sel.학기 && normalizeSubjectName(p.과목명) === sel.raw과목);
-                matchedChoices.push(...matched);
+                // 정확하게 학기와 과목명 뼈대가 일치하는 것만 추출!
+                let matched = choices.find(p => p.학기 === sel.학기 && normalizeSubjectName(p.과목명) === sel.raw과목);
+                if (matched) matchedChoices.push(matched);
             });
             rawCourses = [...fixed, ...matchedChoices];
+
+            // [2학년 필수 조치] 정보, 일본어 중복 폭주 차단 및 1학년으로 강제 편입
+            rawCourses.forEach(c => {
+                if(c.과목명.includes('정보') || c.과목명.includes('일본어')) { c.학기 = '1학년 통합'; c.학점 = 3; c.구분 = '지정'; }
+            });
+            if(!rawCourses.some(c => c.과목명.includes('정보'))) rawCourses.push({ 구분: '지정', 교과군: '생활·교양', 과목명: '정보', 학점: 3, 학기: '1학년 통합' });
+            if(!rawCourses.some(c => c.과목명.includes('일본어'))) rawCourses.push({ 구분: '지정', 교과군: '생활·교양', 과목명: '일본어', 학점: 3, 학기: '1학년 통합' });
         }
 
-        // [1학년 필수 조치] 보건(2), 진로(2) 강제 추가 (누락 방지)
+        // [1학년 필수 조치] 보건, 진로와 직업 강제 주입
         if(!rawCourses.some(c => c.과목명 === '보건')) rawCourses.push({ 구분: '지정', 교과군: '생활·교양', 과목명: '보건', 학점: 2, 학기: '1학년 통합' });
         if(!rawCourses.some(c => c.과목명.includes('진로와'))) rawCourses.push({ 구분: '지정', 교과군: '생활·교양', 과목명: '진로와 직업', 학점: 2, 학기: '1학년 통합' });
 
-        // [1학년 학기 통합 처리] 1학년 1,2학기는 무조건 '1학년 통합' 하나로 묶기
+        // [1학년 학기 통합 처리] 1-1, 1-2를 1학년 통합으로 완전히 묶음
         let merged1stYear = {};
         let otherCourses = [];
         
         rawCourses.forEach(c => {
-            if (currentStudent.grade === 1 || c.학기.includes('1학년')) {
+            if (c.학기.includes('1학년')) {
                 let key = c.과목명;
                 if (!merged1stYear[key]) {
                     merged1stYear[key] = { ...c, 학기: '1학년 통합', 학점: 0 };
@@ -464,9 +469,7 @@
         
         DISPLAY_SEMESTERS.forEach(sem => {
             let coursesInSem = myCourses.filter(c => c.학기 === sem);
-            
-            // 2학년의 경우, '1학년 통합' 내역을 화면에 보여줄 필요가 없으면 필터링 (필요시 제거 가능)
-            if(coursesInSem.length > 0 && !(currentStudent.grade === 2 && sem === '1학년 통합')) {
+            if(coursesInSem.length > 0) {
                 let block = document.createElement('div');
                 block.className = 'semester-block';
                 let headerText = sem === '1학년 통합' ? '1학년 공통 및 지정 확정 내역 (1, 2학기 통합)' : `${sem} 확정 내역`;
@@ -492,7 +495,7 @@
         const targetP = currentStudent.grade === 1 ? db.p1 : db.p2;
         const choicePool = targetP.filter(p => p.구분 === '선택' && !myCourses.some(cc => cc.과목명 === p.과목명 && (cc.학기 === p.학기 || cc.학기 === '1학년 통합')));
 
-        // 시뮬레이션 노출 학기 엄격 통제 (1학년은 2/3학년 모두, 2학년은 3학년만)
+        // [시뮬레이션 노출 학기 엄격 제한]
         let simSemesters = currentStudent.grade === 1 
             ? ['2학년 1학기', '2학년 2학기', '3학년 1학기', '3학년 2학기']
             : ['3학년 1학기', '3학년 2학기'];
@@ -567,7 +570,7 @@
         const totalCredits = totalCourses.reduce((sum, c) => sum + parseInt(c.학점), 0);
         addSpRow('최종 총 교과 학점', '172학점 이상', `${totalCredits} 학점`, totalCredits >= 172);
 
-        // [중복 선택 차단] 동일 선택과목 2번 선택 불가 (일본어회화 등)
+        // [중복 신청 방지] 선택과목 중복 발견 시 즉시 에러 표출!
         let dupErrors = [];
         let choiceCounts = {};
         totalCourses.filter(c => c.구분 === '선택').forEach(c => {
@@ -577,25 +580,23 @@
         for(let name in choiceCounts) {
             if(choiceCounts[name] > 1) dupErrors.push(name);
         }
-        addSpRow('과목 중복 신청 점검', '동일 선택과목 중복 금지', dupErrors.length > 0 ? '중복 발견' : '이상 없음', dupErrors.length === 0, dupErrors.length > 0 ? `[${dupErrors.join(', ')}] 중복 선택됨` : '');
+        addSpRow('과목 중복 신청 점검', '동일 선택과목 2번 선택 불가', dupErrors.length > 0 ? '중복 발견' : '이상 없음', dupErrors.length === 0, dupErrors.length > 0 ? `[${dupErrors.join(', ')}] 중복 선택됨` : '');
 
-        // [시뮬레이션 선택 개수 점검 적용] 일반 4개, 교양 1~2개
-        let simSems = ['2학년 1학기', '2학년 2학기', '3학년 1학기', '3학년 2학기'];
+        // [시뮬레이션 개수 점검] 일반 4개 + 교양 1개(또는 2개) 제한
+        let simSems = currentStudent.grade === 1 ? ['2학년 1학기', '2학년 2학기', '3학년 1학기', '3학년 2학기'] : ['3학년 1학기', '3학년 2학기'];
         simSems.forEach(sem => {
             let simReg = selectedSimSubjects.filter(c => c.학기 === sem && c.교과군 !== '생활·교양').length;
             let simLib = selectedSimSubjects.filter(c => c.학기 === sem && c.교과군 === '생활·교양').length;
             
-            // 3학년 2학기만 교양 2개, 나머지는 1개
-            let reqLib = (sem === '3학년 2학기') ? 2 : 1;
             let reqReg = 4;
+            let reqLib = (sem === '3학년 2학기') ? 2 : 1;
             
-            // 시뮬레이션 항목에 과목이 하나라도 담겼을 때만 체크
             if(selectedSimSubjects.some(c => c.학기 === sem)) {
                 addSpRow(`${sem} 시뮬 선택수`, `일반 ${reqReg}개 + 교양 ${reqLib}개`, `일반 ${simReg}개, 교양 ${simLib}개`, simReg === reqReg && simLib === reqLib);
             }
         });
 
-        // [과학 위계 완화] 같은 학기에 수강하는 것은 오류 아님! (>= 대신 > 사용)
+        // [과학 위계 완화] 동시 수강 허용
         let seqErrors = [];
         const checkSeq = (pre, posts) => {
             let postCourses = totalCourses.filter(c => posts.includes(c.과목명));
