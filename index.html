@@ -108,7 +108,7 @@
 
         <div class="card">
             <div class="card-title"><i class="fa-solid fa-plus-circle"></i> 향후 과목 선택 시뮬레이션</div>
-            <p style="font-size:0.85rem; color:#64748b; margin-bottom:15px;">해당 학기의 남은 선택과목입니다. 편제표에 명시된 개수만큼 선택 가능하며 초과 시 자동 차단됩니다.</p>
+            <p style="font-size:0.85rem; color:#64748b; margin-bottom:15px;">해당 학기의 남은 선택과목입니다. 편제표에 지정된 개수만큼 선택 가능하며 초과 시 자동 차단됩니다.</p>
             <div id="simContainer"></div>
         </div>
 
@@ -137,6 +137,7 @@
         st2025: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1z8VlK-MeVZinqME6We4qrbphcC9OEXu7ST9apAd5bD33dRlLQT4UjotNTrOnEtU1O73pKi8K41Oz/pub?gid=705706182&single=true&output=csv"
     };
 
+    const SEMESTERS = ['1학년 1학기', '1학년 2학기', '2학년 1학기', '2학년 2학기', '3학년 1학기', '3학년 2학기'];
     const REQUIRED = { "국어": 10, "수학": 10, "영어": 10, "한국사": 6, "사회": 10, "과학": 12, "체육": 10, "예술": 10, "생활·교양": 16 };
     
     let db = { curriculum: [], students: [] };
@@ -145,6 +146,7 @@
     let selectedSimSubjects = [];
     let jointCourses = [];
 
+    // 문자열 정규화 (완벽 매칭용 - 로마자 등 완전 제거)
     function normalizeSubjectName(name) {
         if(!name) return '';
         return String(name).replace(/\s/g, '').replace(/★/g, '')
@@ -153,6 +155,7 @@
                            .toUpperCase();
     }
 
+    // 포함 단어(Includes) 추적기로 오차율 0% 점검
     function getAuditGroup(group, name) {
         let g = String(group || '').replace(/\s/g, ''); 
         let n = String(name || '').replace(/\s/g, '');
@@ -178,6 +181,7 @@
                 return;
             }
 
+            // 1. 편제표 DB 파싱
             const fetchCurriculum = () => {
                 return new Promise((resolve) => {
                     Papa.parse(DB_URLS.curriculum, {
@@ -225,6 +229,7 @@
                 });
             };
 
+            // 2. 1학년 학생 명단 파싱
             const fetchSt2026 = () => {
                 return new Promise((resolve) => {
                     Papa.parse(DB_URLS.st2026, {
@@ -251,6 +256,7 @@
                 });
             };
 
+            // 3. 2학년 수강신청 파싱
             const fetchSt2025 = () => {
                 return new Promise((resolve) => {
                     Papa.parse(DB_URLS.st2025, {
@@ -459,6 +465,7 @@
         container.innerHTML = '';
 
         let myCurriculum = db.curriculum.filter(c => c['Year'] === String(currentStudent.year));
+        
         const choicePool = myCurriculum.filter(c => {
             let gubun = String(c['구분'] || '').trim();
             let isChoice = gubun === '선택' || gubun.includes('선택');
@@ -499,7 +506,7 @@
                 gSection.className = 'group-section';
                 let displayGroupName = gName === '선택 과목 (제한없음)' ? '선택 과목' : `[그룹: ${gName}]`;
                 
-                // [수정사항] 텍스트에서 '최대'를 빼고 직관적인 문구로 변경
+                // '최대' 텍스트 제거 요구사항 반영
                 let limitText = limit !== 99 ? `${limit}과목 선택` : '자유 선택';
                 let isSafe = currentCount < limit;
                 
@@ -533,7 +540,7 @@
         });
     }
 
-    // 시뮬레이션 개수 초과 시 경고창 텍스트 수정
+    // 시뮬레이션 개수 초과 시 경고창 텍스트 수정 ('최대' 삭제)
     window.toggleSimSubject = function(name, sem, gName, limit) {
         let isSelected = selectedSimSubjects.some(s => s['과목명'] === name && s['학기'] === sem);
         
@@ -597,20 +604,26 @@
             specialBody.innerHTML += `<tr><td>${name}</td><td>${standard}</td><td>${current} ${msg ? `<br><span class="error-msg">${msg}</span>` : ''}</td><td class="${isPass ? 'pass' : 'error'}">${isPass ? '✔️ 정상' : '❌ 오류'}</td></tr>`;
         };
 
-        // [수정사항 1] 국·수·영 이수 학점 동적 반영 로직 (총학점/2 - 6)
+        // [수정사항] 국·수·영 이수 학점 동적 텍스트 (기준은 고정, 현재상태에 괄호 안내 추가)
         const ksy = (totals['국어'] || 0) + (totals['수학'] || 0) + (totals['영어'] || 0);
         let dynamicKSYLimit = Math.floor(finalTotalCredits / 2) - 6;
         let ksyLimitStr = Number.isInteger(dynamicKSYLimit) ? dynamicKSYLimit : dynamicKSYLimit.toFixed(1);
-        let ksyStandardText = jointTotalCredits > 0 ? `${ksyLimitStr}학점 이하 (총 교과 학점의 50% - 6학점)` : `81학점 이하`;
         
-        addSpRow('국·수·영 이수 학점', ksyStandardText, `${ksy} 학점`, ksy <= dynamicKSYLimit);
+        let ksyStandardText = '81학점 초과 금지(공동교육과정 별도)';
+        let ksyCurrentText = `${ksy} 학점`;
+        
+        // 공동교육과정이 1학점이라도 들어가면 한도를 계산해서 괄호로 친절히 보여줌
+        if (jointTotalCredits > 0) {
+            ksyCurrentText += ` <br><span style="font-size:0.85em; color:var(--primary);">(공동교육과정 포함 ${ksyLimitStr}학점 초과금지)</span>`;
+        }
+        
+        addSpRow('국·수·영 이수 학점', ksyStandardText, ksyCurrentText, ksy <= dynamicKSYLimit);
 
-        // [수정사항 2] 최종 총 교과 학점 텍스트 변경 및 공동교육과정 반영 괄호 추가
+        // 최종 총 교과 학점 텍스트 변경 및 공동교육과정 반영 괄호 추가
         let totalCreditCurrentText = `${baseTotalCredits} 학점`;
         if (jointTotalCredits > 0) {
             totalCreditCurrentText += ` <br><span style="font-size:0.85em; color:var(--primary);">(공동교육과정 포함 ${finalTotalCredits}학점)</span>`;
         }
-        // 기준은 174 (공동 제외)로 판단하므로 baseTotalCredits를 비교!
         addSpRow('최종 총 교과 학점', '174학점 이상 (공동교육과정 별도)', totalCreditCurrentText, baseTotalCredits >= 174);
 
         let dupErrors = [];
