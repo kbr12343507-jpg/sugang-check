@@ -599,7 +599,7 @@
         };
 
         const ksy = (totals['국어'] || 0) + (totals['수학'] || 0) + (totals['영어'] || 0);
-        addSpRow('국·수·영 이수 학점', '81학점 이하', `${ksy} 학점`, ksy <= 81);
+        addSpRow('국·수·영 이수 학점', '81학점 이하 (공동교육과정 별도)', `${ksy} 학점`, ksy <= 81);
 
         // [수정사항] 172학점에서 '174학점 (공동교육과정 별도)'로 변경! 조건도 174 이상으로 상향.
         const totalCredits = totalCourses.reduce((sum, c) => sum + (parseInt(String(c['학점']).replace(/[^0-9]/g, ''), 10) || 0), 0);
